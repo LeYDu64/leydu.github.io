@@ -1,3 +1,452 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#1a120b">
+<title>👑 Le Renégat du Royaume</title>
+
+<style>
+// ===== AUDIO =====
+
+let music = new Audio("music.mp3");
+let revealSound = new Audio("reveal.mp3");
+let voteSound = new Audio("vote.mp3");
+let winSound = new Audio("win.mp3");
+
+music.loop = true;
+music.volume = 0.4;
+
+let soundEnabled = true;
+
+// Démarrer musique au premier clic (important mobile)
+document.addEventListener("click", function startMusic(){
+    if(soundEnabled){
+        music.play();
+    }
+    document.removeEventListener("click", startMusic);
+});
+
+/* === ANIMATIONS === */
+
+.fadeIn {
+    animation: fadeIn 0.5s ease forwards;
+}
+
+.slideUp {
+    animation: slideUp 0.4s ease forwards;
+}
+
+.pop {
+    animation: pop 0.3s ease;
+}
+
+.shake {
+    animation: shake 0.4s;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes pop {
+    0% { transform: scale(0.7); }
+    70% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+}
+
+@keyframes shake {
+    0% { transform: translateX(0); }
+    20% { transform: translateX(-5px); }
+    40% { transform: translateX(5px); }
+    60% { transform: translateX(-5px); }
+    80% { transform: translateX(5px); }
+    100% { transform: translateX(0); }
+}
+
+/* Effet pression bouton */
+button:active {
+    transform: scale(0.95);
+}
+
+body{
+margin:0;
+font-family:'Georgia',serif;
+color:#f5deb3;
+text-align:center;
+background:radial-gradient(circle at top,#3b2a1d,#1a120b 60%);
+}
+.container{max-width:520px;margin:auto;padding:20px;}
+.logo{font-size:32px;font-weight:bold;color:gold;text-shadow:0 0 10px gold;}
+.card{
+background:linear-gradient(145deg,#2b1d13,#1a120b);
+padding:20px;margin-top:20px;border-radius:18px;
+box-shadow:0 0 25px rgba(255,215,0,0.2);
+border:1px solid rgba(255,215,0,0.2);
+}
+input{
+padding:10px;margin:6px;border-radius:8px;
+border:1px solid #b8860b;background:#1a120b;color:#f5deb3;
+}
+button{
+background:linear-gradient(145deg,#b8860b,#8b6508);
+border:none;padding:12px;margin:8px 0;width:100%;
+font-size:16px;border-radius:10px;color:white;
+cursor:pointer;font-weight:bold;
+}
+button:hover{background:linear-gradient(145deg,#d4af37,#a67c00);}
+.playerButton{background:linear-gradient(145deg,#5a3e2b,#3b2a1d);}
+.ruleBtn{background:#3e6b48;}
+.resetBtn{background:#6b2c2c;}
+.hidden{display:none;}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<div class="logo">👑 Le Renégat du Royaume</div>
+
+<div id="setup" class="card">
+<h3>⚔ Configuration</h3>
+
+<input type="number" id="playerCount" min="3" placeholder="Nbre de joueurs">
+<input type="number" id="impostorCount" min="0" placeholder="Nbre de Renégats">
+<input type="number" id="idiotCount" min="0" placeholder="Nbre d'Idiots du Royaume">
+
+<div id="nameInputs"></div>
+
+<button onclick="generateNameInputs()">Valider joueurs</button>
+<button onclick="startGame()">Lancer la partie</button>
+<button class="ruleBtn" onclick="toggleRules()">Règles</button>
+<button class="resetBtn" onclick="resetData()">Réinitialiser</button>
+</div>
+
+<div id="rules" class="card hidden">
+<h3>📜 Rôles</h3>
+<p>
+👨‍🌾 <b>Villageoi</b> : A un mot.<br><br>
+🕵️ <b>Renégat</b> : A un mot différent de celui des villageois.<br><br>
+🤡 <b>Idiot du Royaume</b> : N'a aucun mot.<br><br>
+<h3>⚖️ Conditions</h3>
+<p>
+Il y a minimum 3 joueurs, aucun minimum pour les renégats et les idiots du royaume, cependant la partie ne se lance pas s'il n'y a pas de renégat ni d'idiot du royaume.<br><br>
+<h3>🚩 But du jeu</h3>
+<p>
+Chaque joueur commence avec un mot hormis l'idiot du royaume, à chaque tour le joueur désigné doit dire un mot similaire à son mot d'origine.
+À son élimination, l'idiot du royaume tente de deviner le mot des villageois, au vote, les joueurs désignent la personne qu'ils pensent être renégat ou idiot du royaume.
+S'il n'y a plus de renégat, les villageois gagnent, s'il y a autant de villageois que de renégat, les renégats gagnent, si l'idiot du royaume devine le mot des villageois, il gagne.
+</p>
+</div>
+
+<div id="transition" class="card hidden">
+<h3>Passe le téléphone à</h3>
+<h2 id="playerName"></h2>
+<button onclick="showWord()">Voir mon rôle</button>
+</div>
+
+<div id="reveal" class="card hidden">
+<h2 id="wordText"></h2>
+<button onclick="nextPlayer()">Cacher</button>
+</div>
+
+<div id="voteScreen" class="card hidden">
+<h3>Votez un joueur</h3>
+<div id="voteButtons"></div>
+</div>
+
+<div id="resultScreen" class="card hidden"></div>
+
+</div>
+
+<script>
+
+let players=[];
+let currentPlayer=0;
+let villageWord="";
+let impostorWord="";
+
+const words=[
+["Chat","Tigre"],["Lion","Panthère"],["Chien","Loup"], ["Pizza","Burger"],["Pâtes","Riz"],["Frites","Chips"], ["Voiture","Moto"],["Locomotive","Wagon"],["Avion","Hélicoptère"], ["Mer","Piscine"],["Montagne","Colline"],
+  ["Forêt","Jungle"], ["Ordinateur","Tablette"],["Téléphone","Radio"],["Caméra","Appareil photo"], ["Film","Série"],["Livre","Magazine"],["Hôpital","Vétérinaire"],["Café","Thé"], ["Chocolat","Bonbon"],
+  ["Bateau","Sous-marin"],["Neige","Glace"],["Pomme","Poire"], ["Fraise","Framboise"],["Chaussure","Botte"],["Chemise","Veste"], ["Soleil","Lune"],["Mer","Océan"],["Police","Pompier"], ["Roi","Prince"],
+  ["Supermarché","Boulangerie"], ["Football","Basket"],["Paris","Londres"], ["Netflix","YouTube"],["Amazon","eBay"], ["Facebook","Instagram"],["Snapchat","TikTok"], ["McDonald's","Burger King"],
+  ["Pepsi","Coca-Cola"], ["Ferrari","Lamborghini"],["Nike","Adidas"], ["Marvel","DC"],["Bitcoin","Ethereum"], ["Samsung","Apple"], ["Xbox","PlayStation"],["Windows","Mac"], ["Google","FireFox"],
+  ["Airbnb","Hotel"], ["Uber","Taxi"],["Croissant","Pain au chocolat"], ["Fromage","Beurre"],["Bière","Vin"], ["Guitare","Piano"],["Drame","Comédie"], ["Action","Horreur"],["Zombie","Vampire"], 
+  ["Dragon","Dinosaure"], ["Clown","Magicien"], ["Pluie","Orage"],["Désert","Savane"], ["Cinéma","Théâtre"],["PlayMobil","LEGO"],["Mario","Link"],["Zelda","Ganondorph"],["Feutre","Peinture"],["Croquis","Dessin"],
+  ["Château", "Forteresse"],["Dragon", "Serpent"],["Épée", "Dague"],["Couronne", "Diadème"],["Chevalier", "Soldat"],["Lait","Jus d'orange"],["Beurre","Margarine"],["Sucre","Sel"],["Four","Micro-ondes"],
+ ["Brosse à dents","Dentifrice"],["Shampoing","Gel douche"],["Savon","Parfum"],["Stylo","Crayon"],["Gomme","Taille-crayon"],["Cahier","Agenda"],["Horloge","Montre"],["Calendrier","Planning"],["Lampe","Bougie"],
+["Canapé","Fauteuil"],["Lit","Hamac"],["Oreiller","Couette"],["Balai","Aspirateur"],["Clé","Serrure"],["Porte","Fenêtre"],["Pont","Tunnel"],["Route","Autoroute"],["Bus","Tramway"],
+["Phare","Lanterne"],["Île","Continent"],["Rivière","Lac"],["Volcan","Montagne"],["Tempête","Ouragan"],["Nuage","Brouillard"],["Éclair","Tonnerre"],["Arc-en-ciel","Aurore boréale"],
+["Serpent","Crocodile"],["Aigle","Faucon"],["Requin","Dauphin"],["Fourmi","Abeille"],["Papillon","Libellule"],["Boulon","Vis"],["Marteau","Tournevis"],["Scie","Perceuse"],
+["Prison","Tribunal"],["Avocat","Juge"],["Banque","Assurance"],["Billet","Pièce"],["Diamant","Or"],["Armure","Bouclier"],["Arc","Arbalète"],["Sorcière","Magicienne"],["Fantôme","Esprit"],["Monstre","Créature"],
+["Robot","Cyborg"],["Alien","Extraterrestre"],["Capitaine","Pirate"],["Ninja","Samouraï"],["Espion","Agent secret"],["Président","Ministre"],["Député","Sénateur"],["Professeur","Élève"],["Médecin","Infirmier"],
+["Journal","Télévision"],["Radio","Podcast"],["Youtubeur","Streamer"],["Influenceur","Blogueur"],["Clavier","Souris"],["Écran","Projecteur"],["Serveur","Client"],["Application","Logiciel"],
+["Virus","Antivirus"],["Hacker","Programmeur"],["Planète","Étoile"],["Galaxie","Univers"],["Mars","Jupiter"],["Mars","Planète Terre"],["Plume","Encre"],["Papier","Carton"],["Bouteille","Verre"],["Assiette","Bol"],
+["Fourchette","Couteau"],["Cuillère","Louche"],["Train","Métro"],["Scooter","Vélo"],["Feu","Incendie"],["Glacier","Iceberg"],["Cactus","Palmier"],["Rose","Tulipe"],["Champignon","Truffe"],["Blé","Maïs"],
+["Dauphin","Orque"],["Pieuvre","Calamar"],["Masque","Casque"],["Gant","Écharpe"],["Pull","Sweat"],["Jeans","Short"],["Bracelet","Collier"],["Bague","Boucle d'oreille"],["Taxi","Chauffeur"],["Pilote","Conducteur"],
+["Ski","Snowboard"],["Surf","Plongée"],["Course","Marathon"],["Boxe","Karaté"],["Gymnastique","Danse"],["Batterie","Violon"],["Micro","Casque audio"],["Studio","Scène"],["Théâtre","Opéra"],["Cirque","Carnaval"],
+["Démon","Ange"],["Paradis","Enfer"],["Explosion","Incendie"],["Accident","Panne"],["Secret","Mystère"],["Indice","Preuve"],["Courrier","Colis"],["Facture","Ticket"],["Coiffeur","Barbier"],["Maquillage","Rouge à lèvres"],
+["Château fort","Palais"],["Village","Capitale"],["Trône","Autel"],["Crypte","Donjon"],["Marché","Foire"],["Festival","Concert"],["Glace","Sorbet"],["Yaourt","Crème"],["Céréales","Granola"],["Gaufre","Crêpe"],
+["Burger","Hot-dog"],["Tacos","Burrito"],["Sushi","Makis"],["Ramen","Nouilles"],["Safari","Expédition"],["Explorateur","Aventurier"],["Trésor","Carte"],["Boussole","GPS"]
+];
+let availableWords = [...words];
+function getRandomWordPair() {
+
+    if (availableWords.length === 0) {
+        alert("⚠️ Tous les mots ont été utilisés ! Réinitialisation automatique.");
+        availableWords = [...words];
+    }
+
+    const randomIndex = Math.floor(Math.random() * availableWords.length);
+    const selectedPair = availableWords[randomIndex];
+
+    // 🔥 On enlève la paire utilisée
+    availableWords.splice(randomIndex, 1);
+
+    return selectedPair;
+}
+    
+function animate(element, animation){
+    element.classList.remove(animation);
+    void element.offsetWidth;
+    element.classList.add(animation);
+}
+
+function saveConfig(){
+const config={
+playerCount:playerCount.value,
+impostorCount:impostorCount.value,
+idiotCount:idiotCount.value,
+names:getNames()
+};
+localStorage.setItem("royaumeConfig",JSON.stringify(config));
+}
+
+function loadConfig(){
+const saved=JSON.parse(localStorage.getItem("royaumeConfig"));
+if(!saved) return;
+playerCount.value=saved.playerCount;
+impostorCount.value=saved.impostorCount;
+idiotCount.value=saved.idiotCount||0;
+generateNameInputs();
+setTimeout(()=>{
+saved.names.forEach((name,i)=>{
+let input=document.getElementById("name"+i);
+if(input) input.value=name;
+});
+},100);
+}
+
+function resetData(){
+localStorage.removeItem("royaumeConfig");
+location.reload();
+}
+
+function shuffle(array){
+for(let i=array.length-1;i>0;i--){
+let j=Math.floor(Math.random()*(i+1));
+[array[i],array[j]]=[array[j],array[i]];
+}
+}
+
+function getNames(){
+let names=[];
+for(let i=0;i<playerCount.value;i++){
+names.push(document.getElementById("name"+i)?.value||("Joueur "+(i+1)));
+}
+return names;
+}
+
+function generateNameInputs(){
+let count=parseInt(playerCount.value)||0;
+let container=document.getElementById("nameInputs");
+container.innerHTML="";
+for(let i=0;i<count;i++){
+let input=document.createElement("input");
+input.id="name"+i;
+input.placeholder="Nom joueur "+(i+1);
+container.appendChild(input);
+}
+saveConfig();
+}
+
+function startGame(){
+
+saveConfig();
+
+let count=parseInt(playerCount.value)||0;
+let impostors=parseInt(impostorCount.value)||0;
+let idiotCountValue=parseInt(idiotCount.value)||0;
+
+if(count<3){
+alert("Minimum 3 joueurs.");
+return;
+}
+
+if(impostors<0||idiotCountValue<0){
+alert("Valeur invalide.");
+return;
+}
+
+if(impostors+idiotCountValue>=count){
+alert("Trop de rôles spéciaux.");
+return;
+}
+
+if(impostors===0 && idiotCountValue===0){
+alert("Il faut au moins un Renégat ou un Idiot du Royaume.");
+return;
+}
+
+players=[];
+
+let pair = getRandomWordPair();
+villageWord=pair[0];
+impostorWord=pair[1];
+
+let names=getNames();
+
+for(let i=0;i<count;i++){
+players.push({
+name:names[i],
+role:"Villageois",
+word:villageWord,
+alive:true
+});
+}
+
+shuffle(players);
+
+for(let i=0;i<impostors;i++){
+players[i].role="Renégat";
+players[i].word=impostorWord;
+}
+
+let index=impostors;
+for(let i=0;i<idiotCountValue;i++){
+players[index].role="Idiot du Royaume";
+players[index].word="";
+index++;
+}
+
+shuffle(players);
+
+currentPlayer=0;
+setup.classList.add("hidden");
+transition.classList.remove("hidden");
+playerName.innerText=players[currentPlayer].name;
+}
+
+function showWord(){
+animate(document.getElementById("reveal"), "pop");
+transition.classList.add("hidden");
+reveal.classList.remove("hidden");
+
+let player=players[currentPlayer];
+
+if(player.role==="Idiot du Royaume"){
+wordText.innerText = player.name + ", tu es l'Idiot du Royaume 🤡";
+}else{
+wordText.innerText = player.name + ", ton mot est : " + player.word;
+}
+}
+
+
+function nextPlayer(){
+currentPlayer++;
+if(currentPlayer>=players.length){
+reveal.classList.add("hidden");
+initTurns();
+return;
+}
+reveal.classList.add("hidden");
+transition.classList.remove("hidden");
+playerName.innerText=players[currentPlayer].name;
+}
+
+function startVote(){
+animate(document.getElementById("voteScreen"), "slideUp");
+voteScreen.classList.remove("hidden");
+voteButtons.innerHTML="";
+players.forEach(p=>{
+if(p.alive){
+let btn=document.createElement("button");
+btn.className="playerButton";
+btn.innerText=p.name;
+btn.onclick=()=>eliminate(p);
+voteButtons.appendChild(btn);
+}
+});
+}
+    
+function showDebrief() {
+
+    let debriefHTML = "<h3>📜 Débrief Final</h3>";
+
+    players.forEach(p => {
+
+        let roleIcon = "";
+
+        if (p.role === "Villageois") roleIcon = "👨‍🌾";
+        if (p.role === "Renégat") roleIcon = "🕵️";
+        if (p.role === "Idiot du Royaume") roleIcon = "🤡";
+
+        debriefHTML += `
+            <p>${roleIcon} <b>${p.name}</b> était ${p.role}</p>
+        `;
+    });
+
+    resultScreen.innerHTML += debriefHTML;
+    animate(resultScreen, "fadeIn");
+}
+    
+function eliminate(player){
+player.alive=false;
+voteScreen.classList.add("hidden");
+resultScreen.classList.remove("hidden");
+resultScreen.innerHTML="<h3>"+player.name+" était "+player.role+"</h3>";
+
+if(player.role==="Idiot du Royaume"){
+let guess=prompt("Quel est le mot des villageois ?");
+if(guess && guess.toLowerCase()===villageWord.toLowerCase()){
+resultScreen.innerHTML+="<h2>🤡 L'Idiot triomphe ! 🤡</h2>";
+resultScreen.innerHTML+="<button onclick='location.reload()'>Nouvelle partie</button>";
+return;
+}
+}
+
+let impostorsAlive = players.filter(p => p.role === "Renégat" && p.alive).length;
+let villagersAlive = players.filter(p => p.role === "Villageois" && p.alive).length;
+let idiotsAlive = players.filter(p => p.role === "Idiot du Royaume" && p.alive).length;
+
+// 🔥 CONDITION : on continue tant qu'il reste plusieurs rôles
+
+// Victoire Villageois → plus aucun Renégat ET plus aucun Idiot
+if (impostorsAlive === 0 && idiotsAlive === 0 && villagersAlive > 0) {
+    resultScreen.innerHTML += "<h2>🎉 Victoire des Villageois</h2>";
+    showDebrief();
+    resultScreen.innerHTML += "<button onclick='location.reload()'>Nouvelle partie</button>";
+    return;
+}
+
+// Victoire Renégats → ils sont au moins aussi nombreux que les Villageois ET aucun Idiot
+if (impostorsAlive > 0 && impostorsAlive >= villagersAlive && idiotsAlive === 0) {
+    resultScreen.innerHTML += "<h2>💀 Victoire des Renégats</h2>";
+    showDebrief();
+    resultScreen.innerHTML += "<button onclick='location.reload()'>Nouvelle partie</button>";
     return;
 }
 
